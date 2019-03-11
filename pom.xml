@@ -13,8 +13,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>6</source>
-                    <target>6</target>
+                    <source>1.7</source>
+                    <target>1.7</target>
                 </configuration>
             </plugin>
         </plugins>
@@ -65,11 +65,11 @@
         </dependency>
 
         <!--netflix Ribbon-->
-        <dependency>
+       <!-- <dependency>
             <groupId>com.netflix.feign</groupId>
             <artifactId>feign-ribbon</artifactId>
             <version>8.18.0</version>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>com.netflix.ribbon</groupId>
             <artifactId>ribbon</artifactId>

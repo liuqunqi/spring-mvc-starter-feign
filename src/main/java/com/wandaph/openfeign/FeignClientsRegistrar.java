@@ -121,8 +121,7 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
     }
 
     public String getServiceUrl() {
-        return serviceUrl;
-        // return StringUtils.isEmpty(serviceUrl) ? SERVICE_URL_DEFAULT : serviceUrl;
+        return StringUtils.isEmpty(serviceUrl) ? SERVICE_URL_DEFAULT : serviceUrl;
     }
 
     public void setServiceUrl(String serviceUrl) {
@@ -205,19 +204,18 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
     }
 
 
+    /**
+     *  构建Feign代理对象
+     * @param annotationClass
+     * @param serviceId
+     * @return
+     */
     public Object buildProxyTarget(Class<?> annotationClass, String serviceId) {
-        final DiscoveryClient client = EurekaRegistry.getDiscoveryClientInstance(getServiceUrl(),getAppName(),getPort());
-        /*EurekaRegistry eurekaRegistry = EurekaRegistry.getInstance(getServiceUrl(),getAppName(),getPort());
-        final DiscoveryClient client = eurekaRegistry.getDiscoveryClient();*/
-
+        //获取EurekaClient 客户端
+        final EurekaClient client = EurekaRegistry.getEurekaClientInstance(getServiceUrl(), getAppName(), getPort());
         //主要的作用就是装载配置信息，用于初始化客户端和负载均衡器。默认的实现方式是DefaultClientConfigImpl。
         final IClientConfig clientConfig = new DefaultClientConfigImpl();
         clientConfig.loadDefaultValues();
-      /*  if (!StringUtils.isEmpty(appName) && 0 != port) {
-            clientConfig.set(CommonClientConfigKey.AppName, appName);
-            clientConfig.set(CommonClientConfigKey.Port, port);
-            System.err.println("====================================>" + appName + ":" + port);
-        }*/
         //设置vipAddress，该值对应spring.application.name配置，指定某个应用
         clientConfig.set(CommonClientConfigKey.DeploymentContextBasedVipAddresses, serviceId);
         Provider<EurekaClient> eurekaClientProvider = new Provider<EurekaClient>() {
@@ -239,9 +237,8 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
          * 4）如上，ServerList接口有两个方法，分别为获取初始化的服务实例清单和获取更新的服务实例清单；
          * 5）ServerListFilter接口实现，用于对服务实例列表的过滤，根据规则返回过滤后的服务列表；
          * 6）ServerListUpdater服务更新器接口 实现动态获取更新服务列表，默认30秒执行一次*/
-        final ILoadBalancer loadBalancer = new ZoneAwareLoadBalancer(clientConfig,
-                new ZoneAvoidanceRule(), new NIWSDiscoveryPing(),
-                discoveryEnabledNIWSServerList, new DefaultNIWSServerListFilter());
+        final ILoadBalancer loadBalancer = new ZoneAwareLoadBalancer(clientConfig,new ZoneAvoidanceRule(),
+                new NIWSDiscoveryPing(),discoveryEnabledNIWSServerList, new DefaultNIWSServerListFilter());
 
         RibbonClient ribbonClient = RibbonClient.builder().lbClientFactory(new LBClientFactory() {
             @Override
@@ -250,21 +247,16 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
             }
         }).build();
 
+        if (!serviceId.startsWith("http://") && !serviceId.startsWith("https://")) {
+            serviceId = "http://" + serviceId;
+        }
+
         Object target = Feign.builder()
                 .client(ribbonClient)
                 .encoder(new SpringEncoder())
                 .decoder(new ResponseEntityDecoder(new SpringDecoder()))
                 .contract(new SpringMvcContract())
-                .target(annotationClass, "http://" + serviceId);
-        //.options(new Request.Options(1000, 3500))//超时处理
-        //.retryer(new Retryer.Default(5000, 5000, 3)) //重试策略
-        //.requestInterceptor(new RequestInterceptor() { //每次请求时，自定义内部请求头部信息，例如：权限相关的信息
-                         /* @Override
-                            public void apply(RequestTemplate requestTemplate) {
-                                requestTemplate.header("Content-Type", "application/json");
-                                requestTemplate.header("Accept", "application/json");
-                            }*/
-        //});
+                .target(annotationClass, serviceId);
         return target;
     }
 

@@ -54,19 +54,19 @@ import javax.inject.Provider;
  */
 public class TestFeignRibbon {
     public static void main(String[] args) throws Exception {
-        String servideId = "wandaph-dclean-zhoucong";
+        String serviceId = "wandaph-dclean-zhoucong";
         String serviceUurl = "http://10.53.156.75:8761/eureka/";
         String appName = "spring-mvc-web";
-        int appPort = 8081;
+        int appPort = 8082;
 
         //初始化 EurekaClient 客户端
-        final DiscoveryClient client = EurekaRegistry.getDiscoveryClientInstance(serviceUurl, appName, appPort);
+        final EurekaClient client = EurekaRegistry.getEurekaClientInstance(serviceUurl, appName, appPort);
 
         //基本使用默认配置
         final IClientConfig clientConfig = new DefaultClientConfigImpl();
         clientConfig.loadDefaultValues();
         //设置vipAddress，该值对应spring.application.name配置，指定某个应用
-        clientConfig.set(CommonClientConfigKey.DeploymentContextBasedVipAddresses, servideId);
+        clientConfig.set(CommonClientConfigKey.DeploymentContextBasedVipAddresses, serviceId);
         Provider<EurekaClient> eurekaClientProvider = new Provider<EurekaClient>() {
             @Override
             public synchronized EurekaClient get() {
@@ -101,14 +101,24 @@ public class TestFeignRibbon {
             }
         }).build();
 
+        if (!serviceId.startsWith("http://") && !serviceId.startsWith("https://")) {
+            serviceId = "http://" + serviceId;
+        }
         RemoteClient service = Feign.builder()
-                /*  .encoder(new JacksonEncoder())
-                  .decoder(new JacksonDecoder())*/
-                .encoder(new SpringEncoder())
-                .decoder(new ResponseEntityDecoder(new SpringDecoder()))
+                .encoder(new SpringEncoder()) //JacksonEncoder()
+                .decoder(new ResponseEntityDecoder(new SpringDecoder())) //new JacksonDecoder()
                 .contract(new SpringMvcContract())
                 .client(ribbonClient)
-                .target(RemoteClient.class, "http://" + servideId);
+                .target(RemoteClient.class,  serviceId);
+                /*.options(new Request.Options(1000, 3500))//超时处理
+                .retryer(new Retryer.Default(5000, 5000, 3)) //重试策略
+                .requestInterceptor(new RequestInterceptor() { //每次请求时，自定义内部请求头部信息，例如：权限相关的信息
+                         /* @Override
+                            public void apply(RequestTemplate requestTemplate) {
+                                requestTemplate.header("Content-Type", "application/json");
+                                requestTemplate.header("Accept", "application/json");
+                            }
+                 });*/
 
         //参数信息
         Person param = new Person();

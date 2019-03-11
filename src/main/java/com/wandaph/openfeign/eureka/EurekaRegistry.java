@@ -28,6 +28,7 @@ import com.netflix.appinfo.InstanceInfo;
 import com.netflix.appinfo.MyDataCenterInstanceConfig;
 import com.netflix.appinfo.providers.EurekaConfigBasedInstanceInfoProvider;
 import com.netflix.config.ConfigurationManager;
+import com.netflix.config.DynamicPropertyFactory;
 import com.netflix.discovery.DefaultEurekaClientConfig;
 import com.netflix.discovery.DiscoveryClient;
 import com.netflix.discovery.EurekaClient;
@@ -57,23 +58,23 @@ public class EurekaRegistry {
 
     private static Logger logger = LoggerFactory.getLogger(EurekaRegistry.class);
 
-    private static DiscoveryClient discoveryClient;
+    private static EurekaClient eurekaClient;
 
-    private static InstanceInfo instanceInfo;
+    private DynamicPropertyFactory configInstance = DynamicPropertyFactory.getInstance();
 
     private EurekaRegistry(String ServiceUrl, String AppName, int port) {
         initEurekaClient(ServiceUrl, AppName, port);
     }
 
-    public synchronized static DiscoveryClient getDiscoveryClientInstance(String ServiceUrl, String AppName, int port) {
-        if(discoveryClient ==null){
-            return new EurekaRegistry(ServiceUrl, AppName, port).getDiscoveryClient();
+    public synchronized static EurekaClient getEurekaClientInstance(String ServiceUrl, String AppName, int port) {
+        if(eurekaClient ==null){
+            return new EurekaRegistry(ServiceUrl, AppName, port).getEurekaClient();
         }
-        return discoveryClient;
+        return eurekaClient;
     }
 
-    private DiscoveryClient getDiscoveryClient(){
-        return discoveryClient;
+    private  EurekaClient getEurekaClient() {
+        return eurekaClient;
     }
 
     /**
@@ -84,13 +85,14 @@ public class EurekaRegistry {
      * @param port       端口号
      * @return
      */
-    public DiscoveryClient initEurekaClient(String ServiceUrl, String AppName, int port) {
+    public EurekaClient initEurekaClient(String ServiceUrl, String AppName, int port) {
         logger.info("======================初始化EurekaClient配置信息Start===============================");
         //初始化默认配置
         Properties properties = new Properties();
         properties.setProperty("eureka.serviceUrl.default", ServiceUrl);
         properties.setProperty("eureka.port", String.valueOf(port));
         properties.setProperty("eureka.name", AppName);
+        properties.setProperty("eureka.vipAddress", AppName);
         properties.setProperty("eureka.us-east-1.availabilityZones", "default");
         properties.setProperty("eureka.preferSameZone", "false");
         properties.setProperty("eureka.shouldUseDns", "false");
@@ -100,14 +102,14 @@ public class EurekaRegistry {
         EurekaInstanceConfig instanceConfig = new DataCenterInstanceConfigExt();
 
         //InstanceInfo 应用实例信息 Eureka-Client 向 Eureka-Server 注册该对象信息
-        instanceInfo = new EurekaConfigBasedInstanceInfoProvider(instanceConfig).get();
+        InstanceInfo instanceInfo = new EurekaConfigBasedInstanceInfoProvider(instanceConfig).get();
 
         ApplicationInfoManager applicationInfoManager = new ApplicationInfoManager(instanceConfig, instanceInfo);
 
         //EurekaClientConfig 配置  Eureka-Server 的连接地址、获取服务提供者列表的频率、注册自身为服务提供者的频率等等。
         EurekaClientConfig eurekaClientConfig = new DefaultEurekaClientConfig();
 
-        discoveryClient = new DiscoveryClient(applicationInfoManager, eurekaClientConfig);
+        eurekaClient = new DiscoveryClient(applicationInfoManager, eurekaClientConfig);
 
         logger.info("Registering application " + instanceConfig.getAppname() + " to eureka with STARTING status");
         applicationInfoManager.setInstanceStatus(InstanceInfo.InstanceStatus.STARTING);
@@ -122,15 +124,17 @@ public class EurekaRegistry {
         logger.info("Registering application " + instanceConfig.getAppname() + " with eureka with status UP");
 
         applicationInfoManager.setInstanceStatus(InstanceInfo.InstanceStatus.UP);
+        //异步接收注册返回信息
+        waitForRegistrationWithEureka(eurekaClient);
         logger.info("======================初始化EurekaClient配置信息End===============================");
-        return discoveryClient;
+        return eurekaClient;
     }
 
 
     public void stop() {
-        if (discoveryClient != null) {
+        if (eurekaClient != null) {
             logger.info("Shutting down server. Demo over.");
-            discoveryClient.shutdown();
+            eurekaClient.shutdown();
         }
     }
 
@@ -144,8 +148,7 @@ public class EurekaRegistry {
             @Override
             public void run() {
                 // my vip address to listen on
-                /// String vipAddress = configInstance.getStringProperty("eureka.vipAddress", "sampleservice.mydomain.net").get();
-                String vipAddress = instanceInfo.getInstanceId();
+                String vipAddress = configInstance.getStringProperty("eureka.vipAddress", "sampleservice.mydomain.net").get();
                 InstanceInfo nextServerInfo = null;
                 while (nextServerInfo == null) {
                     try {
@@ -159,7 +162,7 @@ public class EurekaRegistry {
                         }
                     }
                 }
-                logger.info("service registration with eureka  success...");
+                logger.info("========服务注册成功:"+vipAddress+"===================");
             }
         }).start();
 

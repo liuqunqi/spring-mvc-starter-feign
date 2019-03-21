@@ -25,7 +25,6 @@ package com.wandaph.openfeign.test;
 import com.netflix.client.config.CommonClientConfigKey;
 import com.netflix.client.config.DefaultClientConfigImpl;
 import com.netflix.client.config.IClientConfig;
-import com.netflix.discovery.DiscoveryClient;
 import com.netflix.discovery.EurekaClient;
 import com.netflix.loadbalancer.ILoadBalancer;
 import com.netflix.loadbalancer.ZoneAvoidanceRule;
@@ -38,10 +37,13 @@ import com.wandaph.openfeign.support.ResponseEntityDecoder;
 import com.wandaph.openfeign.support.SpringDecoder;
 import com.wandaph.openfeign.support.SpringEncoder;
 import com.wandaph.openfeign.support.SpringMvcContract;
+import com.wandaph.openfeign.test.hystrix.FallbackRemote;
 import com.wandaph.openfeign.test.clients.RemoteClient;
-import com.wandaph.openfeign.test.dto.CommonResult;
+import com.wandaph.openfeign.test.dto.CommonDataResponse;
 import com.wandaph.openfeign.test.dto.Person;
 import feign.Feign;
+import feign.hystrix.FallbackFactory;
+import feign.hystrix.HystrixFeign;
 import feign.ribbon.LBClient;
 import feign.ribbon.LBClientFactory;
 import feign.ribbon.RibbonClient;
@@ -54,7 +56,7 @@ import javax.inject.Provider;
  */
 public class TestFeignRibbon {
     public static void main(String[] args) throws Exception {
-        String serviceId = "wandaph-dclean-zhoucong";
+        String serviceId = "wandaph-cif-center-lz";
         String serviceUurl = "http://10.53.156.75:8761/eureka/";
         String appName = "spring-mvc-web";
         int appPort = 8082;
@@ -120,15 +122,31 @@ public class TestFeignRibbon {
                             }
                  });*/
 
+        //使用HystrixFeign
+        //FallbackFactory factory= new FallbackFactoryRemote();
+
+        FallbackFactory<RemoteClient> factory = new FallbackFactory() {
+            @Override
+            public RemoteClient create(Throwable throwable) {
+                return new FallbackRemote();
+            }
+        };
+
+        RemoteClient rc= HystrixFeign.builder()
+                .encoder(new SpringEncoder()) //JacksonEncoder()
+                .decoder(new ResponseEntityDecoder(new SpringDecoder())) //new JacksonDecoder()
+                .contract(new SpringMvcContract())
+                .client(ribbonClient)
+                .target(RemoteClient.class, serviceId, factory);
+
         //参数信息
         Person param = new Person();
         param.setName("scott");
         //service.updatePerson(param);
 
-        for (int i = 0; i < 5; i++) {
-            CommonResult result = service.testDelete();
-            System.out.println(result.getCode());
-        }
+        CommonDataResponse result = rc.testDemo();
+        System.out.println(result.getMsg());
+
     }
 
 

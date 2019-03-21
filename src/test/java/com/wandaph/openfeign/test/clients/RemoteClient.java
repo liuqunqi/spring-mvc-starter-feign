@@ -22,6 +22,7 @@
  */
 package com.wandaph.openfeign.test.clients;
 
+import com.wandaph.openfeign.test.dto.CommonDataResponse;
 import com.wandaph.openfeign.test.dto.CommonResult;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -31,13 +32,13 @@ import org.springframework.web.bind.annotation.ResponseBody;
  * @author lvzhen
  * @version Id: RemoteService.java, v 0.1 2019/3/6 16:01 lvzhen Exp $$
  */
-@RequestMapping("/create-html")
+@RequestMapping("/user/base")
 public interface RemoteClient {
 
     /*@Headers({"Content-Type: application/json", "Accept: application/json"})
     @RequestLine("POST /updatePerson")*/
-    @RequestMapping(value = "/cteate-html-test", method = RequestMethod.POST)
+    @RequestMapping(value = "/realname2", method = RequestMethod.POST)
     @ResponseBody
-    CommonResult testDelete();
+    CommonDataResponse testDemo();
 
 }

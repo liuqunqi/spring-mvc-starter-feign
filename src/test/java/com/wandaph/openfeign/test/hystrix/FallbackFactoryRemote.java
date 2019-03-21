@@ -20,40 +20,28 @@
  * the third party without the agreement of wandaph. If Any problem cannot be solved in the
  * procedure of programming should be feedback to wandaph Co,. Ltd Inc in time, Thank you!
  */
-package com.wandaph.openfeign.annotation;
+package com.wandaph.openfeign.test.hystrix;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+import com.wandaph.openfeign.test.clients.RemoteClient;
+import com.wandaph.openfeign.test.dto.CommonDataResponse;
+import feign.hystrix.FallbackFactory;
 
 /**
- *  FeignClient 标记
  * @author lvzhen
- * @version Id: FeignClient.java, v 0.1 2019/3/4 10:08 lvzhen Exp $$
+ * @version Id: FallbackFactoryRemote.java, v 0.1 2019/3/12 11:27 lvzhen Exp $$
  */
-@Target({ElementType.TYPE})
-@Retention(RetentionPolicy.RUNTIME)
-public @interface FeignClient {
+public class FallbackFactoryRemote implements FallbackFactory<RemoteClient> {
 
-    /**
-     * 调用的服务地址
-     *
-     * @return
-     */
-    String value() default "";
+    @Override
+    public RemoteClient create(Throwable cause) {
+        return new RemoteClient() {
+            @Override
+            public CommonDataResponse testDemo() {
+                CommonDataResponse response = new CommonDataResponse();
+                response.setMsg("Fallback.response...");
+                return response;
+            }
+        };
+    }
 
-
-    /**
-	 * 回退或者降级处理实现类, 必须实现@FeignClient接口
-     *  @see com.wandaph.openfeign.test.hystrix.FallbackRemote for details.
-	 */
-    Class<?> fallback() default void.class;
-
-    /**
-     * 为指定的Feign客户端定义回退或者降级处理工厂。
-     * fallback *工厂必须生成实现由{@link FeignClient}注释的接口*的回退类的实例。
-     * @see com.wandaph.openfeign.test.hystrix.FallbackFactoryRemote  for details.
-     */
-    Class<?> fallbackFactory() default void.class;
 }

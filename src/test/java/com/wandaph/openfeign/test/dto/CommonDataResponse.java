@@ -20,40 +20,39 @@
  * the third party without the agreement of wandaph. If Any problem cannot be solved in the
  * procedure of programming should be feedback to wandaph Co,. Ltd Inc in time, Thank you!
  */
-package com.wandaph.openfeign.annotation;
-
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+package com.wandaph.openfeign.test.dto;
 
 /**
- *  FeignClient 标记
  * @author lvzhen
- * @version Id: FeignClient.java, v 0.1 2019/3/4 10:08 lvzhen Exp $$
+ * @version Id: CommonDataResponse.java, v 0.1 2019/3/12 8:36 lvzhen Exp $$
  */
-@Target({ElementType.TYPE})
-@Retention(RetentionPolicy.RUNTIME)
-public @interface FeignClient {
+public class CommonDataResponse {
 
-    /**
-     * 调用的服务地址
-     *
-     * @return
-     */
-    String value() default "";
+    public String code;
+    public String msg;
+    public String sysTime;
 
+    public String getCode() {
+        return code;
+    }
 
-    /**
-	 * 回退或者降级处理实现类, 必须实现@FeignClient接口
-     *  @see com.wandaph.openfeign.test.hystrix.FallbackRemote for details.
-	 */
-    Class<?> fallback() default void.class;
+    public void setCode(String code) {
+        this.code = code;
+    }
 
-    /**
-     * 为指定的Feign客户端定义回退或者降级处理工厂。
-     * fallback *工厂必须生成实现由{@link FeignClient}注释的接口*的回退类的实例。
-     * @see com.wandaph.openfeign.test.hystrix.FallbackFactoryRemote  for details.
-     */
-    Class<?> fallbackFactory() default void.class;
+    public String getMsg() {
+        return msg;
+    }
+
+    public void setMsg(String msg) {
+        this.msg = msg;
+    }
+
+    public String getSysTime() {
+        return sysTime;
+    }
+
+    public void setSysTime(String sysTime) {
+        this.sysTime = sysTime;
+    }
 }

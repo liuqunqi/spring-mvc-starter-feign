@@ -40,9 +40,15 @@ import com.wandaph.openfeign.support.SpringDecoder;
 import com.wandaph.openfeign.support.SpringEncoder;
 import com.wandaph.openfeign.support.SpringMvcContract;
 import feign.Feign;
+import feign.Feign.Builder;
+import feign.Target;
+import feign.Target.HardCodedTarget;
+import feign.hystrix.FallbackFactory;
+import feign.hystrix.HystrixFeign;
 import feign.ribbon.LBClient;
 import feign.ribbon.LBClientFactory;
 import feign.ribbon.RibbonClient;
+import feign.slf4j.Slf4jLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
@@ -54,6 +60,7 @@ import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.context.ResourceLoaderAware;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.type.AnnotationMetadata;
@@ -88,11 +95,20 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
     private ClassLoader classLoader;
     private ResourceLoader resourceLoader;
 
-    private String appName;
-    private int port;
-    private String scanBasePackage;
     /**
-     * Eureka服务地址
+     * 应用名
+     */
+    private String appName;
+    /**
+     * 应用端口号
+     */
+    private int port;
+    /**
+     * @FeignClient 注解标注包路径
+     */
+    private String[] scanBasePackages;
+    /**
+     * Eureka服务地址 默认 SERVICE_URL_DEFAULT
      */
     private String serviceUrl;
 
@@ -112,12 +128,15 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
         this.port = port;
     }
 
-    public String getScanBasePackage() {
-        return StringUtils.isEmpty(scanBasePackage) ? SCAN_BASE_PACKAGE_DEFAULT : scanBasePackage;
+    public String[] getScanBasePackages() {
+        if (scanBasePackages == null || scanBasePackages.length == 0) {
+            return new String[]{SCAN_BASE_PACKAGE_DEFAULT};
+        }
+        return scanBasePackages;
     }
 
-    public void setScanBasePackage(String scanBasePackage) {
-        this.scanBasePackage = scanBasePackage;
+    public void setScanBasePackages(String[] scanBasePackages) {
+        this.scanBasePackages = scanBasePackages;
     }
 
     public String getServiceUrl() {
@@ -150,12 +169,14 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
         classScanner.setResourceLoader(this.resourceLoader);
         AnnotationTypeFilter annotationTypeFilter = new AnnotationTypeFilter(FeignClient.class);
         classScanner.addIncludeFilter(annotationTypeFilter);
-        Set<BeanDefinition> beanDefinitionSet = classScanner.findCandidateComponents(getScanBasePackage());
-        for (BeanDefinition candidateComponent : beanDefinitionSet) {
-            if (candidateComponent instanceof AnnotatedBeanDefinition) {
-                AnnotatedBeanDefinition beanDefinition = (AnnotatedBeanDefinition) candidateComponent;
-                AnnotationMetadata annotationMetadata = beanDefinition.getMetadata();
-                registerBeans(annotationMetadata, configurableListableBeanFactory);
+        for (String basePackage : getScanBasePackages()) {
+            Set<BeanDefinition> beanDefinitionSet = classScanner.findCandidateComponents(basePackage);
+            for (BeanDefinition candidateComponent : beanDefinitionSet) {
+                if (candidateComponent instanceof AnnotatedBeanDefinition) {
+                    AnnotatedBeanDefinition beanDefinition = (AnnotatedBeanDefinition) candidateComponent;
+                    AnnotationMetadata annotationMetadata = beanDefinition.getMetadata();
+                    registerBeans(annotationMetadata, configurableListableBeanFactory);
+                }
             }
         }
     }
@@ -167,17 +188,53 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
      * @param configurableListableBeanFactory
      */
     private void registerBeans(AnnotationMetadata annotationMetadata, ConfigurableListableBeanFactory configurableListableBeanFactory) {
-        Class<?> targetClass = null;
+        Class<?> targetInterface = null;
         try {
-            targetClass = Class.forName(annotationMetadata.getClassName());
+            targetInterface = Class.forName(annotationMetadata.getClassName());
         } catch (ClassNotFoundException e) {
             log.error(e.getMessage());
         }
         Assert.isTrue(annotationMetadata.isInterface(), "@FeignClient can only be specified on an interface");
         Map<String, Object> attributes = annotationMetadata.getAnnotationAttributes(FeignClient.class.getCanonicalName());
-        String serverId = (String) attributes.get("value");
-        Object target = buildProxyTarget(targetClass, serverId);
-        configurableListableBeanFactory.registerSingleton(targetClass.getName(), target);
+        validate(attributes);
+        String serviceId = (String) attributes.get("value");
+        serviceId = resolve(serviceId);
+        //获取断路器失败返回
+        Class<?> fallbackFactory = (Class<?>) attributes.get("fallbackFactory");
+        Class<?> fallback = (Class<?>) attributes.get("fallback");
+
+        Object target = buildProxyTarget(targetInterface, serviceId, fallback, fallbackFactory);
+        configurableListableBeanFactory.registerSingleton(targetInterface.getName(), target);
+    }
+
+    private void validate(Map<String, Object> attributes) {
+        AnnotationAttributes annotation = AnnotationAttributes.fromMap(attributes);
+        validateFallback(annotation.getClass("fallback"));
+        validateFallbackFactory(annotation.getClass("fallbackFactory"));
+    }
+
+    static void validateFallback(final Class clazz) {
+        Assert.isTrue(!clazz.isInterface(),
+                "Fallback class must implement the interface annotated by @FeignClient");
+    }
+
+    static void validateFallbackFactory(final Class clazz) {
+        Assert.isTrue(!clazz.isInterface(), "Fallback factory must produce instances "
+                + "of fallback classes that implement the interface annotated by @FeignClient");
+    }
+
+    /**
+     * 占位符解析
+     *
+     * @param value
+     * @return
+     * @FeignClient(value = "${wandaph-cif-center}")
+     */
+    private String resolve(String value) {
+        if (StringUtils.hasText(value)) {
+            return this.environment.resolvePlaceholders(value);
+        }
+        return value;
     }
 
     /**
@@ -205,17 +262,20 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
 
 
     /**
-     *  构建Feign代理对象
-     * @param annotationClass
+     * 构建Feign代理对象
+     *
+     * @param targetInterface
      * @param serviceId
      * @return
      */
-    public Object buildProxyTarget(Class<?> annotationClass, String serviceId) {
+    public Object buildProxyTarget(Class<?> targetInterface, String serviceId, Class<?> fallback, Class<?> fallbackFactory) {
         //获取EurekaClient 客户端
         final EurekaClient client = EurekaRegistry.getEurekaClientInstance(getServiceUrl(), getAppName(), getPort());
+
         //主要的作用就是装载配置信息，用于初始化客户端和负载均衡器。默认的实现方式是DefaultClientConfigImpl。
         final IClientConfig clientConfig = new DefaultClientConfigImpl();
         clientConfig.loadDefaultValues();
+
         //设置vipAddress，该值对应spring.application.name配置，指定某个应用
         clientConfig.set(CommonClientConfigKey.DeploymentContextBasedVipAddresses, serviceId);
         Provider<EurekaClient> eurekaClientProvider = new Provider<EurekaClient>() {
@@ -237,8 +297,8 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
          * 4）如上，ServerList接口有两个方法，分别为获取初始化的服务实例清单和获取更新的服务实例清单；
          * 5）ServerListFilter接口实现，用于对服务实例列表的过滤，根据规则返回过滤后的服务列表；
          * 6）ServerListUpdater服务更新器接口 实现动态获取更新服务列表，默认30秒执行一次*/
-        final ILoadBalancer loadBalancer = new ZoneAwareLoadBalancer(clientConfig,new ZoneAvoidanceRule(),
-                new NIWSDiscoveryPing(),discoveryEnabledNIWSServerList, new DefaultNIWSServerListFilter());
+        final ILoadBalancer loadBalancer = new ZoneAwareLoadBalancer(clientConfig, new ZoneAvoidanceRule(),
+                new NIWSDiscoveryPing(), discoveryEnabledNIWSServerList, new DefaultNIWSServerListFilter());
 
         RibbonClient ribbonClient = RibbonClient.builder().lbClientFactory(new LBClientFactory() {
             @Override
@@ -251,14 +311,31 @@ public class FeignClientsRegistrar implements BeanFactoryPostProcessor, Environm
             serviceId = "http://" + serviceId;
         }
 
-        Object target = Feign.builder()
-                .client(ribbonClient)
-                .encoder(new SpringEncoder())
-                .decoder(new ResponseEntityDecoder(new SpringDecoder()))
-                .contract(new SpringMvcContract())
-                .target(annotationClass, serviceId);
-        return target;
+        //熔断降级,处理失败返回
+        if (fallback != void.class || fallbackFactory != void.class) {
+            HystrixFeign.Builder hystrixFeign = HystrixFeign.builder()
+                    .client(ribbonClient)
+                    .logger(new Slf4jLogger(targetInterface))
+                    .encoder(new SpringEncoder())
+                    .decoder(new ResponseEntityDecoder(new SpringDecoder()))
+                    .contract(new SpringMvcContract());
+            try {
+                return fallback != void.class ?
+                        hystrixFeign.target(new HardCodedTarget(targetInterface, serviceId), fallback.newInstance())
+                        : hystrixFeign.target(targetInterface, serviceId, (FallbackFactory) fallbackFactory.newInstance());
+            } catch (Exception e) {
+                throw new IllegalStateException(String.format(
+                        "No  fallbackMechanism instance of type  found for feign client %s", targetInterface.getName()));
+            }
+        } else {
+            Feign.Builder feign = Feign.builder()
+                    .client(ribbonClient)
+                    .logger(new Slf4jLogger(targetInterface))
+                    .encoder(new SpringEncoder())
+                    .decoder(new ResponseEntityDecoder(new SpringDecoder()))
+                    .contract(new SpringMvcContract());
+            return feign.target(targetInterface, serviceId);
+        }
     }
-
 
 }

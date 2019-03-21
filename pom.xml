@@ -63,6 +63,11 @@
             <artifactId>feign-ribbon</artifactId>
             <version>9.5.0</version>
         </dependency>
+        <dependency>
+            <groupId>io.github.openfeign</groupId>
+            <artifactId>feign-slf4j</artifactId>
+            <version>9.5.0</version>
+        </dependency>
 
         <!--netflix Ribbon-->
        <!-- <dependency>
@@ -70,6 +75,16 @@
             <artifactId>feign-ribbon</artifactId>
             <version>8.18.0</version>
         </dependency>-->
+        <dependency>
+            <groupId>io.github.openfeign</groupId>
+            <artifactId>feign-hystrix</artifactId>
+            <version>9.5.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.reactivex</groupId>
+            <artifactId>rxjava</artifactId>
+            <version>1.2.6</version>
+        </dependency>
         <dependency>
             <groupId>com.netflix.ribbon</groupId>
             <artifactId>ribbon</artifactId>

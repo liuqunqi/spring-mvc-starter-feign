@@ -9,5 +9,8 @@
         <module name="spring-mvc-starter-feign" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="spring-mvc-starter-feign" target="1.7" />
+    </bytecodeTargetLevel>
   </component>
 </project>
